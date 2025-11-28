@@ -1,21 +1,70 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { User, AuthContextType } from '@/types';
 import { getStoredUser, setStoredUser, mockUsers } from '@/lib/mockData';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+    const { data: session, status } = useSession();
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Load user from localStorage on mount
-        const storedUser = getStoredUser();
-        setUser(storedUser);
-        setIsLoading(false);
-    }, []);
+        const initAuth = async () => {
+            if (status === 'loading') return;
+
+            if (session?.user) {
+                // Check if we have a stored user profile for this email
+                const storedUser = getStoredUser();
+
+                if (storedUser && storedUser.email === session.user.email) {
+                    setUser(storedUser);
+                } else {
+                    // New Google user or first time login on this device
+                    // Check for pending role from login/signup flow
+                    const pendingRole = localStorage.getItem('pendingRole') as User['role'] | null;
+                    const role = pendingRole || 'doctor'; // Default to doctor if no role found
+
+                    const newUser: User = {
+                        id: session.user.email || 'google-user',
+                        name: session.user.name || 'Google User',
+                        email: session.user.email || '',
+                        role: role,
+                        profileImage: session.user.image || undefined,
+                        createdAt: new Date(),
+                    };
+
+                    // Add role-specific fields
+                    if (role === 'doctor') {
+                        (newUser as any).specialization = 'General Practitioner';
+                        (newUser as any).experience = '0 years';
+                    } else {
+                        (newUser as any).hospitalName = 'New Hospital';
+                        (newUser as any).location = 'Unknown';
+                    }
+
+                    setUser(newUser);
+                    setStoredUser(newUser);
+                    localStorage.removeItem('pendingRole'); // Clear pending role
+                }
+            } else {
+                // No session, check local storage for non-Google login (if we still want to support it)
+                // For now, we'll rely on session for Google auth, but keep local storage for mock auth compatibility
+                const storedUser = getStoredUser();
+                if (storedUser) {
+                    setUser(storedUser);
+                } else {
+                    setUser(null);
+                }
+            }
+            setIsLoading(false);
+        };
+
+        initAuth();
+    }, [session, status]);
 
     const login = async (email: string, password: string) => {
         // Mock login - in production, this would call an API
@@ -25,7 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             throw new Error('Invalid email or password');
         }
 
-        // In a real app, you'd verify the password here
         setUser(foundUser);
         setStoredUser(foundUser);
     };
@@ -46,39 +94,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const loginWithGoogle = async (role: User['role']) => {
-        setIsLoading(true);
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        const googleUser: User = {
-            id: 'google-user-123',
-            name: 'Google User',
-            email: 'google.user@example.com',
-            role: role,
-            profileImage: 'https://lh3.googleusercontent.com/a/default-user=s96-c', // Mock Google avatar
-            // Assuming 'joinedDate' is equivalent to 'createdAt' in the existing User type
-            createdAt: new Date(),
-        };
-
-        // The original User type doesn't have 'specialization', 'experience', 'hospitalName', 'location' directly.
-        // To maintain type safety, these would typically be part of a 'profile' object or conditional types.
-        // For this mock, we'll add them directly, assuming the User type can be extended or is flexible.
-        if (role === 'doctor') {
-            (googleUser as any).specialization = 'General Practitioner';
-            (googleUser as any).experience = '5 years';
-        } else { // Assuming 'patient' or other roles
-            (googleUser as any).hospitalName = 'Google Health Center';
-            (googleUser as any).location = 'Mountain View, CA';
-        }
-
-        setUser(googleUser);
-        setStoredUser(googleUser); // Using existing setStoredUser
-        setIsLoading(false);
+        localStorage.setItem('pendingRole', role);
+        await signIn('google', { callbackUrl: '/' });
     };
 
-    const logout = () => {
+    const logout = async () => {
         setUser(null);
-        setStoredUser(null); // Using existing setStoredUser
+        setStoredUser(null);
+        await signOut({ callbackUrl: '/login' });
     };
 
     const updateProfile = async (userData: Partial<User>) => {
@@ -89,13 +112,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (user) {
             const updatedUser = { ...user, ...userData };
             setUser(updatedUser);
-            setStoredUser(updatedUser); // Using existing setStoredUser
+            setStoredUser(updatedUser);
         }
         setIsLoading(false);
     };
 
     if (isLoading) {
-        return null; // Or a loading spinner
+        return <div className="flex h-screen items-center justify-center">Loading...</div>;
     }
 
     return (
@@ -104,10 +127,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 user,
                 login,
                 signup,
-                loginWithGoogle, // Added loginWithGoogle
+                loginWithGoogle,
                 logout,
                 updateProfile,
-                isLoading, // Added isLoading
+                isLoading,
                 isAuthenticated: !!user,
             }}
         >
