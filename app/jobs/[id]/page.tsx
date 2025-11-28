@@ -171,7 +171,7 @@ export default function JobDetailPage() {
                 <Card>
                     <CardContent className="py-6">
                         <p className="text-center text-muted-foreground">
-                            This is your job posting. You can edit it from the "My Job Posts" page.
+                            This is your job posting. You can edit it from the &quot;My Job Posts&quot; page.
                         </p>
                     </CardContent>
                 </Card>

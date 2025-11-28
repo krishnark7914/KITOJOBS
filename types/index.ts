@@ -76,8 +76,10 @@ export interface Notification {
 export interface AuthContextType {
     user: User | null;
     login: (email: string, password: string) => Promise<void>;
-    signup: (userData: Partial<User>, password: string) => Promise<void>;
+    signup: (data: any, password: string) => Promise<void>;
+    loginWithGoogle: (role: UserRole) => Promise<void>;
     logout: () => void;
-    updateProfile: (userData: Partial<User>) => Promise<void>;
+    updateProfile: (data: Partial<User>) => Promise<void>;
+    isLoading: boolean;
     isAuthenticated: boolean;
 }
